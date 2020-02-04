@@ -1,0 +1,254 @@
+---
+title: "Variable Selection Lasso and Stepwise selection"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Variable Selection (Feature Selection)
+
+### Model 1 
+
+We are going to use the glaucoma dataset that has 63 variables and 196 observations:
+
+```{r}
+setwd('C:/Users/fonse/Documents/DSTI/10. Advanced Statistical Analysis and Machine Learning')
+getwd()
+glaucoma = read.csv("GlaucomaM.csv", sep=",")
+str(glaucoma)
+```
+
+The first 62 columns are the features and the last one is a factor that indicates if it has glaucoma or not.
+
+```{r}
+names(glaucoma)
+```
+
+
+```{r}
+summary(glaucoma)
+```
+# Checking correlation
+
+```{r}
+features = glaucoma[,1:62]
+res = cor(features)
+res
+```
+
+```{r}
+#install.packages("corrplot")
+```
+
+```{r}
+library(corrplot)
+corrplot(res, type = "upper", order = "hclust", 
+         tl.col = "black", tl.srt = 45)
+```
+
+The correlation chart shows that we have a lot of correlation between the explanatory variables, what makes us think that variable selection is need to simplify the model and to produce better results.
+
+## Creating train and test set to assess models
+
+```{r}
+# Random sample indexes
+train_index <- sample(1:nrow(glaucoma), 0.8 * nrow(glaucoma))
+test_index <- setdiff(1:nrow(glaucoma), train_index)
+
+# Build X_train, y_train, X_test, y_test
+X_train <- glaucoma[train_index, 1:62]
+y_train <- glaucoma[train_index, "Class"]
+
+X_test <- glaucoma[test_index, 1:62]
+y_test <- glaucoma[test_index, "Class"]
+```
+
+## Lasso
+
+```{r}
+#install.packages('glmnet')
+```
+
+
+```{r}
+
+library(glmnet)
+
+x <- as.matrix(X_train[,1:62]) # all X vars
+y <- as.double(y_train) # Only Class
+
+# Fit the LASSO model (Lasso: Alpha = 1)
+set.seed(100)
+cv.lasso <- cv.glmnet(x, y, family='binomial', alpha=1, parallel=TRUE, standardize=TRUE, type.measure='auc')
+
+# Results
+plot(cv.lasso)
+```
+
+```{r}
+cat('Min Lambda: ', cv.lasso$lambda.min, '\n 1Sd Lambda: ', cv.lasso$lambda.1se)
+df_coef <- round(as.matrix(coef(cv.lasso, s=cv.lasso$lambda.min)), 2)
+
+# See all contributing variables
+Lasso_model = df_coef[df_coef[, 1] != 0, ]
+Lasso_model
+```
+
+According to Lasso our best model select 12 variables.
+
+```{r}
+var_Lasso = names(Lasso_model)[-1]
+var_Lasso
+```
+
+### Building the model
+```{r}
+
+library(rpart)
+print(X_train[var_Lasso])
+Lasso_Tree=rpart(y_train~.,data=X_train[var_Lasso])
+plot(Lasso_Tree)
+summary(Lasso_Tree)
+
+```
+
+### Predicting with the model
+```{r}
+
+y_predict = predict(Lasso_Tree, type='class', newdata = X_test[var_Lasso])
+accuracy_Lasso = sum(y_predict==y_test)/length(y_test)
+accuracy_Lasso
+
+```
+
+If I use all the variables:
+```{r}
+library(rpart)
+print(X_train[var_Lasso])
+Lasso_Tree=rpart(y_train~.,data=X_train)
+plot(Lasso_Tree)
+summary(Lasso_Tree)
+y_predict = predict(Lasso_Tree, type='class', newdata = X_test)
+accuracy_full = sum(y_predict==y_test)/length(y_test)
+accuracy_full
+
+```
+The accuracy of the full model is lower than the one obtained by the Lasso one.
+
+
+#************************************************************************************************************
+### Model 2 
+
+## Step Forward Selection
+
+In this algorithm we start just with the intercept and we starting adding the best variable at each step. The stopping rule is reached when the adjusted R-squared is not improving anymore.
+
+```{r}
+# Load data
+ozone <- read.csv("ozone.txt", sep=' ',header = TRUE)
+str(ozone)
+```
+
+
+```{r}
+summary(ozone)
+```
+## Enconding factors
+
+We have some categorical data like Vent and Pluie and in other to be able to use them in our model we have to transform each label in one column.
+
+```{r}
+library(mltools) # Has the one_hot function
+library(data.table) #has the type of data the one hot expects
+
+ozone_tf <- data.table(ozone)
+
+ozone_tf <- one_hot(ozone_tf, dropCols=TRUE)
+```
+
+## Checking correlation
+```{r}
+library(corrplot)
+features = ozone_tf[,3:18]
+res = cor(features)
+corrplot(res, type = "upper", order = "hclust", 
+         tl.col = "black", tl.srt = 45)
+```
+It seems that we have strong correlation between T9, T12 and T15.
+
+
+## Creating train and test set to assess models
+
+```{r}
+# Random sample indexes
+train_index <- sample(1:nrow(ozone_tf), 0.8 * nrow(ozone_tf))
+test_index <- setdiff(1:nrow(ozone_tf), train_index)
+
+# Build X_train, y_train, X_test, y_test
+X_train <- ozone_tf[train_index, 3:18]
+y_train <- ozone_tf[train_index, "maxO3"]
+
+X_test <- ozone_tf[test_index, 3:18]
+y_test <- ozone_tf[test_index, "maxO3"]
+```
+
+## Stepwise selection 
+
+
+```{r}
+#install.packages("olsrr")
+library(olsrr)
+
+x <- as.matrix(X_train) # all X vars
+y <- as.double(y_train$maxO3) 
+
+model <- lm(y~x)
+
+# The model tells that Xvent_sud and Xpluie_Sec do not bring value to the model
+
+x <- as.matrix(X_train[,c(1:13,15)]) # all X vars
+model <- lm(y~.,data=as.data.frame(x))
+summary(model)
+```
+
+## 1) Backward selection
+
+```{r}
+ols_step_backward_p(model)
+```
+With 7 of 14 variables we achieve almost the same adjusted R-square (slightly better), but reducing the complexity significatively.
+
+
+## 2) Forward selection
+
+```{r}
+ols_step_forward_p(model)
+```
+The quantity selected of variables is the same, but the list of variables is different.
+
+## 3. Stepwise
+
+Build regression model from a set of candidate predictor variables by entering and removing predictors based on akaike information criteria, in a stepwise manner until there is no variable left to enter or remove any more.
+
+```{r}
+ols_step_both_aic(model)
+```
+
+```{r}
+x <- as.matrix(X_train[,c(10,4,9,2)])
+model <- lm(y~.,data=as.data.frame(x))
+summary(model)
+```
+
+# Applying normalization did not improve the quality of the model
+
+```{r}
+#install.packages("dataPreparation")
+library(dataPreparation)
+x_scaled <- fastScale(dataSet = x, verbose = TRUE)
+model <- lm(y~.,data=as.data.frame(x_scaled))
+summary(model)
+```
+
