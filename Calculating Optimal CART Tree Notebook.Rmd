@@ -1,0 +1,138 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Goal: Define function to select optimal tree
+Inputs: .dataset of explanatory variables
+        .dataset of response
+
+Output: final CART tree
+
+## Steps: 
+1) Build the maximal tree
+2) Pruning
+3) Final Selection
+
+## Function
+```{r}
+CART_Tree <- function(x_data, y_data) {
+  library(rpart)
+  
+  #*****************************************************************************************
+  # 1st step: calculating the maximal tree
+  #*****************************************************************************************
+  Maximal_tree=rpart(y_data~.,data=x_data, control = rpart.control(minsplit = 2,cp=10^-12))
+  Maximal_tree
+  
+  #*****************************************************************************************
+  # 2nd step: Pruning
+  #*****************************************************************************************
+  # Calculate the optimal prunings based on a complexity parameter
+  Optimal_Prunings=printcp(Maximal_tree)
+  # CP - alpha 
+  # nsplit - number of splits
+  # rel error - learning error / root node error
+  # xerror - cross validadtion error - if you run many times rpart you are going to reach different cross validation errors due to the randomness that is contained in this method
+  # xstd
+  
+  #*****************************************************************************************
+  # 3rd step: Final Selection
+  #*****************************************************************************************
+  alpha_matrix=Optimal_Prunings[,1]
+  
+  x_error_min = unique(min(as.vector(Optimal_Prunings[,4]))) # minimum of the crossvalidation error is
+  s=Optimal_Prunings[,4]+Optimal_Prunings[,5] # sum of the cross validation error and its standard deviation
+                                              # the threshold do to the 1SE rule
+  s=unique(min(s)) #to prevent the fct that b may be a vector
+  
+  alpha = alpha_matrix[min(which(Optimal_Prunings[,4]<=s))]
+  p_matches = which((1*(Optimal_Prunings[,4]<=s))==TRUE) #elements that match the criterion
+  r = p_matches[1] # only the first element matters
+  alpha = Optimal_Prunings[r,1]
+  
+  #Final_Tree = rpart(y~.,data=x, control = rpart.control(minsplit = 2,cp=alpha))
+  Final_Tree = prune(Maximal_tree, cp = alpha)
+  plot(Final_Tree)
+ 
+  return(Final_Tree)
+}
+
+```
+
+##   Running for Iris
+```{r}
+data(iris)
+y=iris$Species
+x=iris[,-5]
+CART_Tree(x,y)
+
+```
+
+## Running for Mtcars
+```{r}
+data(mtcars)
+y=mtcars$mpg
+x=mtcars[,-1]
+CART_Tree(x,y)
+```
+
+## Checking all the steps
+```{r cars}
+library(rpart)
+
+data(iris)
+y=iris$Species
+x=iris[,-5]
+
+#1st step with cp small we do not perform the pruning
+Maximal_tree=rpart(y~.,data=x, control = rpart.control(minsplit = 2,cp=10^-12))
+Maximal_tree
+
+```
+```{r}
+#Prints a table of optimal prunings based on a complexity parameter. 
+# CP
+# nsplit 
+# rel error 
+# xerror       
+# xstd
+printcp(Maximal_tree)
+```
+
+```{r}
+plotcp(Maximal_tree)
+```
+
+```{r}
+#2nd step
+
+# Calculate the optimal prunings based on a complexity parameter
+Optimal_Prunings=printcp(Maximal_tree)
+alpha_matrix=Optimal_Prunings[,1]
+  
+x_error_min = unique(min(as.vector(Optimal_Prunings[,4]))) # minimum of the crossvalidation error is
+s=Optimal_Prunings[,4]+Optimal_Prunings[,5] # sum of the cross validation error and its standard deviation
+                                              # the threshold do to the 1SE rule
+s=unique(min(s)) #to prevent the fct that b may be a vector
+  
+alpha = alpha_matrix[min(which(Optimal_Prunings[,4]<=s))]
+p_matches = which((1*(Optimal_Prunings[,4]<=s))==TRUE) #elements that match the criterion
+r = p_matches[1] # only the first element matters
+alpha = Optimal_Prunings[r,1]
+  
+```
+
+
+```{r}
+#3rd step
+
+Final_Tree = prune(Maximal_tree, cp = alpha)
+plot(Final_Tree)
+
+```
+
